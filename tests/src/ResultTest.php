@@ -203,6 +203,7 @@ test('proportional', function (): void {
     $this->election1->addCandidate('C');
 
     $this->election1->addVote('A');
+    $this->election1->addVote('B');
 
     $this->election1->setNumberOfSeats(2);
 

@@ -16,6 +16,7 @@ namespace CondorcetPHP\Condorcet\Algo\Methods\STV;
 use CondorcetPHP\Condorcet\Algo\{Method, MethodInterface, StatsVerbosity};
 use CondorcetPHP\Condorcet\Algo\Tools\StvQuotas;
 use CondorcetPHP\Condorcet\Vote;
+use CondorcetPHP\Condorcet\Throwable\StvTieException;
 
 // Single transferable vote | https://en.wikipedia.org/wiki/Single_transferable_vote
 class SingleTransferableVote extends Method implements MethodInterface
@@ -54,17 +55,25 @@ class SingleTransferableVote extends Method implements MethodInterface
         $surplusToTransfer = [];
 
         while (!$end) {
-            $scoreTable = $this->makeScore($surplusToTransfer, $candidateElected, $candidateEliminated);
+            $scoreTable = $this->makeScore($surplusToTransfer, $candidateElected, array_merge([], ...$candidateEliminated));
             ksort($scoreTable, \SORT_NATURAL);
             arsort($scoreTable, \SORT_NUMERIC);
 
             $successOnRank = false;
 
+            $lastSurplus = -1;
+
             foreach ($scoreTable as $candidateKey => $oneScore) {
                 $surplus = $oneScore - $this->votesNeededToWin;
 
                 if ($surplus >= 0) {
-                    $result[++$rank] = [$candidateKey];
+                    if ($lastSurplus == $surplus) {
+                        $result[$rank][] = $candidateKey;
+                    } else {
+                        $rank += \count($result[$rank] ?? []);
+                        $result[$rank] = [$candidateKey];
+                        $lastSurplus = $surplus;
+                    }
                     $candidateElected[] = $candidateKey;
 
                     $surplusToTransfer[$candidateKey] ?? $surplusToTransfer[$candidateKey] = ['surplus' => 0, 'total' => 0];
@@ -74,8 +83,15 @@ class SingleTransferableVote extends Method implements MethodInterface
                 }
             }
 
+            if ($successOnRank) {
+                $rank += \count($result[$rank] ?? []);
+            }
+
             if (!$successOnRank && !empty($scoreTable)) {
-                $candidateEliminated[] = array_key_last($scoreTable);
+                $lowest_score = $scoreTable[array_key_last($scoreTable)];
+
+                $toEliminate = array_filter($scoreTable, fn ($score) => $score === $lowest_score);
+                $candidateEliminated[] = array_keys($toEliminate);
             } elseif (empty($scoreTable) || $rank >= $election->getNumberOfSeats()) {
                 $end = true;
             }
@@ -84,9 +100,10 @@ class SingleTransferableVote extends Method implements MethodInterface
         }
 
         while ($rank < $election->getNumberOfSeats() && !empty($candidateEliminated)) {
-            $rescueCandidateKey = array_key_last($candidateEliminated);
-            $result[++$rank] = $candidateEliminated[$rescueCandidateKey];
-            unset($candidateEliminated[$rescueCandidateKey]);
+            $eliminationsInRound = array_pop($candidateEliminated);
+
+            $result[$rank] = $eliminationsInRound;
+            $rank += \count($eliminationsInRound);
         }
 
         $this->Stats = $stats;

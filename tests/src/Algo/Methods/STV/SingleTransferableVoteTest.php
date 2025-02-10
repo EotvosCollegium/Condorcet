@@ -3,6 +3,7 @@
 declare(strict_types=1);
 use CondorcetPHP\Condorcet\Election;
 use CondorcetPHP\Condorcet\Throwable\StvQuotaNotImplementedException;
+use CondorcetPHP\Condorcet\Throwable\StvTieException;
 use CondorcetPHP\Condorcet\Algo\Methods\STV\SingleTransferableVote;
 use CondorcetPHP\Condorcet\Algo\StatsVerbosity;
 use CondorcetPHP\Condorcet\Algo\Tools\StvQuotas;
@@ -377,4 +378,24 @@ test('result alternative quotas4', function (): void {
         2 => 'Andrea',
         3 => 'Scott',
     ]);
+});
+
+test('tie', function (): void {
+    $this->election->addCandidate('A');
+    $this->election->addCandidate('B');
+    $this->election->addCandidate('C');
+
+    $this->election->setImplicitRanking(false);
+    $this->election->allowsVoteWeight(true);
+
+    $this->election->setNumberOfSeats(2);
+
+    $this->election->parseVotes('
+            A ^ 10
+            B > C ^ 1
+            C > B ^ 1
+        ');
+
+    $this->expectException(StvTieException::class);
+    $this->election->getResult('STV')->getResultAsArray(true);
 });
